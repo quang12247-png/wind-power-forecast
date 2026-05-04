@@ -622,6 +622,7 @@ else:
                 
                 fig, axes = plt.subplots(3, 1, figsize=(14, 10))
                 
+                # Công suất
                 axes[0].plot(range(1, st.session_state.n_periods+1), forecast_power, 
                             marker='o', linestyle='-', color='b', markersize=3, linewidth=1)
                 axes[0].set_title(f"Dự báo công suất {st.session_state.n_periods} chu kỳ", 
@@ -631,6 +632,7 @@ else:
                 axes[0].grid(True, alpha=0.3)
                 axes[0].fill_between(range(1, st.session_state.n_periods+1), forecast_power, alpha=0.2, color='b')
                 
+                # Tốc độ gió
                 axes[1].plot(range(1, st.session_state.n_periods+1), wind_values, 
                             marker='s', linestyle='-', color='g', markersize=3, linewidth=1)
                 axes[1].set_title("Tốc độ gió đầu vào", fontsize=12, fontweight='bold')
@@ -639,10 +641,14 @@ else:
                 axes[1].grid(True, alpha=0.3)
                 axes[1].fill_between(range(1, st.session_state.n_periods+1), wind_values, alpha=0.2, color='g')
                 
+                # Nhiệt độ
                 axes[2].plot(range(1, st.session_state.n_periods+1), temp_values, 
                             marker='^', linestyle='-', color='r', markersize=3, linewidth=1)
                 axes[2].set_title("Nhiệt độ đầu vào", fontsize=12, fontweight='bold')
                 axes[2].set_xlabel("Chu kỳ")
                 axes[2].set_ylabel("Nhiệt độ (°C)")
                 axes[2].grid(True, alpha=0.3)
-                axes[2].fill_between(range(1, st.session_state.n_periods+1), temp_values, alpha=0.2, color='
+                axes[2].fill_between(range(1, st.session_state.n_periods+1), temp_values, alpha=0.2, color='r')
+                
+                plt.tight_layout()
+                st.pyplot(fig)

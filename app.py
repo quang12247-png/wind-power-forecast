@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import xgboost as xgb
 import warnings
 import pickle
@@ -43,6 +43,8 @@ if 'df_valid' not in st.session_state:
     st.session_state.df_valid = None
 if 'training_info' not in st.session_state:
     st.session_state.training_info = None
+if 'df_original' not in st.session_state:
+    st.session_state.df_original = None
 
 # ================================
 # 5. Đường dẫn lưu mô hình
@@ -87,7 +89,77 @@ def save_model(model, scaler, training_info):
         pickle.dump(training_info, f)
 
 # ================================
-# 8. Sidebar
+# 8. Hàm vẽ biểu đồ phân bố
+# ================================
+def plot_distributions(df_valid, df_original):
+    """Vẽ biểu đồ phân bố tốc độ gió và nhiệt độ"""
+    
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    # 1. Histogram tốc độ gió
+    axes[0, 0].hist(df_valid['WindSpeed'], bins=30, color='steelblue', alpha=0.7, edgecolor='black')
+    axes[0, 0].axvline(df_valid['WindSpeed'].mean(), color='red', linestyle='--', linewidth=2, label=f'TB: {df_valid["WindSpeed"].mean():.2f} m/s')
+    axes[0, 0].set_xlabel('Tốc độ gió (m/s)')
+    axes[0, 0].set_ylabel('Tần suất')
+    axes[0, 0].set_title('Phân bố tốc độ gió (dữ liệu đạt)')
+    axes[0, 0].legend()
+    axes[0, 0].grid(True, alpha=0.3)
+    
+    # 2. Histogram nhiệt độ
+    axes[0, 1].hist(df_valid['Temp'], bins=30, color='coral', alpha=0.7, edgecolor='black')
+    axes[0, 1].axvline(df_valid['Temp'].mean(), color='red', linestyle='--', linewidth=2, label=f'TB: {df_valid["Temp"].mean():.2f} °C')
+    axes[0, 1].set_xlabel('Nhiệt độ (°C)')
+    axes[0, 1].set_ylabel('Tần suất')
+    axes[0, 1].set_title('Phân bố nhiệt độ (dữ liệu đạt)')
+    axes[0, 1].legend()
+    axes[0, 1].grid(True, alpha=0.3)
+    
+    # 3. Boxplot tốc độ gió (so sánh trước/sau lọc)
+    wind_data = [df_original['WindSpeed'].dropna(), df_valid['WindSpeed']]
+    bp1 = axes[1, 0].boxplot(wind_data, labels=['Trước lọc', 'Sau lọc'], patch_artist=True)
+    bp1['boxes'][0].set_facecolor('lightcoral')
+    bp1['boxes'][1].set_facecolor('lightgreen')
+    axes[1, 0].set_ylabel('Tốc độ gió (m/s)')
+    axes[1, 0].set_title('So sánh tốc độ gió trước và sau khi lọc nhiễu')
+    axes[1, 0].grid(True, alpha=0.3)
+    
+    # 4. Boxplot nhiệt độ (so sánh trước/sau lọc)
+    temp_data = [df_original['Temp'].dropna(), df_valid['Temp']]
+    bp2 = axes[1, 1].boxplot(temp_data, labels=['Trước lọc', 'Sau lọc'], patch_artist=True)
+    bp2['boxes'][0].set_facecolor('lightcoral')
+    bp2['boxes'][1].set_facecolor('lightgreen')
+    axes[1, 1].set_ylabel('Nhiệt độ (°C)')
+    axes[1, 1].set_title('So sánh nhiệt độ trước và sau khi lọc nhiễu')
+    axes[1, 1].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_power_distribution(df_valid):
+    """Vẽ biểu đồ phân bố công suất"""
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Histogram công suất
+    axes[0].hist(df_valid['Power'], bins=30, color='green', alpha=0.7, edgecolor='black')
+    axes[0].axvline(df_valid['Power'].mean(), color='red', linestyle='--', linewidth=2, label=f'TB: {df_valid["Power"].mean():.2f} kW')
+    axes[0].set_xlabel('Công suất (kW)')
+    axes[0].set_ylabel('Tần suất')
+    axes[0].set_title('Phân bố công suất phát')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    # Công suất theo tốc độ gió (scatter)
+    axes[1].scatter(df_valid['WindSpeed'], df_valid['Power'], alpha=0.5, c='steelblue', s=10)
+    axes[1].set_xlabel('Tốc độ gió (m/s)')
+    axes[1].set_ylabel('Công suất (kW)')
+    axes[1].set_title('Quan hệ giữa tốc độ gió và công suất')
+    axes[1].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+# ================================
+# 9. Sidebar
 # ================================
 with st.sidebar:
     st.header("📘 Hướng dẫn")
@@ -120,8 +192,10 @@ with st.sidebar:
     if st.session_state.model_trained and st.session_state.training_info:
         st.info(f"💡 **Mô hình đã sẵn sàng**\n\n"
                 f"📅 Huấn luyện: {st.session_state.training_info['date']}\n\n"
-                f"📊 Số mẫu: {st.session_state.training_info['n_samples']}\n\n"
-                f"🎯 R² Score: {st.session_state.training_info['r2']:.3f}")
+                f"📊 Số mẫu đạt: {st.session_state.training_info['n_valid']:,}\n\n"
+                f"📈 R² Score: {st.session_state.training_info['r2']:.4f}\n\n"
+                f"📉 MAE: {st.session_state.training_info['mae']:.2f} kW\n\n"
+                f"📊 RMSE: {st.session_state.training_info['rmse']:.2f} kW")
     
     st.markdown("---")
     
@@ -139,19 +213,21 @@ with st.sidebar:
                 st.session_state.model = None
                 st.session_state.scaler = None
                 st.session_state.training_info = None
+                st.session_state.df_valid = None
+                st.session_state.df_original = None
                 st.success("✅ Đã xóa mô hình cũ. Hãy upload dữ liệu mới để huấn luyện!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Lỗi khi xóa: {e}")
 
 # ================================
-# 9. Thử load mô hình đã lưu
+# 10. Thử load mô hình đã lưu
 # ================================
 if not st.session_state.model_trained:
     load_saved_model()
 
 # ================================
-# 10. Upload và huấn luyện (CHỈ KHI CHƯA CÓ MÔ HÌNH)
+# 11. Upload và huấn luyện (CHỈ KHI CHƯA CÓ MÔ HÌNH)
 # ================================
 if not st.session_state.model_trained:
     st.header("📁 Bước 1: Tải dữ liệu lịch sử (LẦN ĐẦU TIÊN)")
@@ -180,6 +256,9 @@ if not st.session_state.model_trained:
             st.error("❌ File không đúng định dạng. Cần 4 cột!")
             st.stop()
         
+        # Lưu dữ liệu gốc
+        df_original = df.copy()
+        
         # Xử lý thời gian
         df['PCTimeStamp'] = pd.to_datetime(df['PCTimeStamp'], errors='coerce')
         df = df.dropna(subset=['WindSpeed', 'Temp', 'Power'])
@@ -191,14 +270,74 @@ if not st.session_state.model_trained:
         
         df_valid = df[valid_power & valid_wind & valid_temp]
         
-        # Hiển thị thông tin
-        col1, col2, col3 = st.columns(3)
+        # ================================
+        # HIỂN THỊ THỐNG KÊ CHI TIẾT
+        # ================================
+        st.subheader("📊 Thống kê dữ liệu đầu vào")
+        
+        # Hàng 1: Số liệu mẫu
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("📊 Tổng số mẫu", len(df))
+            st.metric("📊 Tổng số mẫu", f"{len(df):,}")
         with col2:
-            st.metric("✅ Mẫu đạt", len(df_valid), delta=f"{(len(df_valid)/len(df)*100):.1f}%")
+            st.metric("✅ Mẫu đạt", f"{len(df_valid):,}", delta=f"{(len(df_valid)/len(df)*100):.1f}%")
         with col3:
-            st.metric("❌ Mẫu nhiễu", len(df)-len(df_valid))
+            st.metric("❌ Mẫu nhiễu", f"{len(df)-len(df_valid):,}", delta=f"-{(len(df)-len(df_valid))/len(df)*100:.1f}%")
+        with col4:
+            st.metric("📈 Tỷ lệ đạt", f"{(len(df_valid)/len(df)*100):.1f}%")
+        
+        # Hàng 2: Thống kê tốc độ gió
+        st.subheader("🌬️ Thống kê tốc độ gió (m/s)")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Trung bình", f"{df_valid['WindSpeed'].mean():.2f}")
+        with col2:
+            st.metric("Trung vị", f"{df_valid['WindSpeed'].median():.2f}")
+        with col3:
+            st.metric("Max", f"{df_valid['WindSpeed'].max():.2f}")
+        with col4:
+            st.metric("Min", f"{df_valid['WindSpeed'].min():.2f}")
+        with col5:
+            st.metric("Độ lệch chuẩn", f"{df_valid['WindSpeed'].std():.2f}")
+        
+        # Hàng 3: Thống kê nhiệt độ
+        st.subheader("🌡️ Thống kê nhiệt độ (°C)")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Trung bình", f"{df_valid['Temp'].mean():.2f}")
+        with col2:
+            st.metric("Trung vị", f"{df_valid['Temp'].median():.2f}")
+        with col3:
+            st.metric("Max", f"{df_valid['Temp'].max():.2f}")
+        with col4:
+            st.metric("Min", f"{df_valid['Temp'].min():.2f}")
+        with col5:
+            st.metric("Độ lệch chuẩn", f"{df_valid['Temp'].std():.2f}")
+        
+        # Hàng 4: Thống kê công suất
+        st.subheader("⚡ Thống kê công suất (kW)")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Trung bình", f"{df_valid['Power'].mean():.2f}")
+        with col2:
+            st.metric("Trung vị", f"{df_valid['Power'].median():.2f}")
+        with col3:
+            st.metric("Max", f"{df_valid['Power'].max():.2f}")
+        with col4:
+            st.metric("Min", f"{df_valid['Power'].min():.2f}")
+        with col5:
+            st.metric("Độ lệch chuẩn", f"{df_valid['Power'].std():.2f}")
+        
+        # Biểu đồ phân bố
+        st.subheader("📊 Biểu đồ phân bố dữ liệu")
+        
+        # Biểu đồ phân bố tốc độ gió và nhiệt độ
+        fig1 = plot_distributions(df_valid, df_original)
+        st.pyplot(fig1)
+        
+        # Biểu đồ phân bố công suất
+        fig2 = plot_power_distribution(df_valid)
+        st.pyplot(fig2)
         
         # Nút huấn luyện
         if st.button("🚀 Huấn luyện và LƯU mô hình", type="primary"):
@@ -233,15 +372,20 @@ if not st.session_state.model_trained:
                 y_pred = model.predict(X_test_scaled)
                 mae = mean_absolute_error(y_test, y_pred)
                 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-                r2 = model.score(X_test_scaled, y_test)
+                r2 = r2_score(y_test, y_pred)
                 
                 # Lưu mô hình
                 training_info = {
                     'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'n_samples': len(df_valid),
+                    'n_samples': len(df),
+                    'n_valid': len(df_valid),
+                    'n_invalid': len(df) - len(df_valid),
                     'mae': mae,
                     'rmse': rmse,
-                    'r2': r2
+                    'r2': r2,
+                    'wind_mean': df_valid['WindSpeed'].mean(),
+                    'temp_mean': df_valid['Temp'].mean(),
+                    'power_mean': df_valid['Power'].mean()
                 }
                 save_model(model, scaler, training_info)
                 
@@ -249,65 +393,55 @@ if not st.session_state.model_trained:
                 st.session_state.model = model
                 st.session_state.scaler = scaler
                 st.session_state.df_valid = df_valid
+                st.session_state.df_original = df_original
                 st.session_state.training_info = training_info
                 st.session_state.model_trained = True
                 
-                # Hiển thị kết quả
-                st.success("✅ Huấn luyện và LƯU mô hình thành công!")
-                st.info("💡 **Từ lần sau, bạn chỉ cần nhập dữ liệu dự báo, không cần upload file lịch sử nữa!**")
+                # ================================
+                # HIỂN THỊ KẾT QUẢ HUẤN LUYỆN
+                # ================================
+                st.subheader("🎯 Kết quả huấn luyện mô hình")
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.metric("MAE", f"{mae:.2f} kW")
+                    st.metric("📉 MAE (Sai số tuyệt đối trung bình)", f"{mae:.2f} kW")
                 with col2:
-                    st.metric("RMSE", f"{rmse:.2f} kW")
+                    st.metric("📊 RMSE (Căn bậc 2 sai số)", f"{rmse:.2f} kW")
                 with col3:
-                    st.metric("R² Score", f"{r2:.3f}")
+                    st.metric("📈 R² Score (Hệ số xác định)", f"{r2:.4f}")
                 
-                # Vẽ biểu đồ phân bố
-                st.subheader("📊 Phân tích dữ liệu")
+                st.success("✅ Huấn luyện và LƯU mô hình thành công!")
+                st.info("💡 **Từ lần sau, bạn chỉ cần nhập dữ liệu dự báo, không cần upload file lịch sử nữa!**")
                 
-                fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+                # So sánh dự đoán vs thực tế
+                st.subheader("📊 Đánh giá mô hình trên tập kiểm tra")
                 
-                # Công suất theo gió
-                wind_bins = np.arange(0, 26, 2)
-                wind_labels = [f"{int(wind_bins[i])}-{int(wind_bins[i+1])}" for i in range(len(wind_bins)-1)]
-                df_valid_copy = df_valid.copy()
-                df_valid_copy['WindBin'] = pd.cut(df_valid_copy['WindSpeed'], bins=wind_bins, labels=wind_labels)
-                avg_power = df_valid_copy.groupby('WindBin', observed=True)['Power'].mean()
-                
-                axes[0].bar(range(len(avg_power)), avg_power.values, color='steelblue', alpha=0.7)
-                axes[0].set_xlabel("Tốc độ gió (m/s)")
-                axes[0].set_ylabel("Công suất trung bình (kW)")
-                axes[0].set_title("Công suất theo tốc độ gió")
-                axes[0].set_xticks(range(len(avg_power)))
-                axes[0].set_xticklabels(avg_power.index, rotation=45)
-                axes[0].grid(True, alpha=0.3)
-                
-                # Số lượng mẫu
-                count_by_wind = df_valid_copy.groupby('WindBin', observed=True)['WindSpeed'].count()
-                axes[1].bar(range(len(count_by_wind)), count_by_wind.values, color='coral', alpha=0.7)
-                axes[1].set_xlabel("Tốc độ gió (m/s)")
-                axes[1].set_ylabel("Số lượng mẫu")
-                axes[1].set_title("Phân bố dữ liệu")
-                axes[1].set_xticks(range(len(count_by_wind)))
-                axes[1].set_xticklabels(count_by_wind.index, rotation=45)
-                axes[1].grid(True, alpha=0.3)
-                
-                plt.tight_layout()
-                st.pyplot(fig)
+                fig_eval, ax_eval = plt.subplots(figsize=(10, 6))
+                ax_eval.scatter(y_test, y_pred, alpha=0.5, c='steelblue', s=20)
+                ax_eval.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2, label='Đường lý tưởng')
+                ax_eval.set_xlabel('Công suất thực tế (kW)')
+                ax_eval.set_ylabel('Công suất dự báo (kW)')
+                ax_eval.set_title('So sánh dự báo vs thực tế trên tập kiểm tra')
+                ax_eval.legend()
+                ax_eval.grid(True, alpha=0.3)
+                st.pyplot(fig_eval)
                 
                 st.rerun()
 
 else:
     # ================================
-    # 11. Dự báo (KHI ĐÃ CÓ MÔ HÌNH)
+    # 12. Dự báo (KHI ĐÃ CÓ MÔ HÌNH)
     # ================================
     st.header("🔧 Dự báo công suất")
-    st.success(f"✅ Mô hình đã sẵn sàng! Huấn luyện ngày: {st.session_state.training_info['date']}")
+    
+    # Hiển thị thông tin mô hình
+    st.success(f"✅ **Mô hình đã sẵn sàng!**")
+    st.info(f"📅 Huấn luyện ngày: {st.session_state.training_info['date']}\n\n"
+            f"📊 Số mẫu huấn luyện: {st.session_state.training_info['n_valid']:,} mẫu (đã lọc nhiễu)\n\n"
+            f"📈 Chất lượng mô hình: R² = {st.session_state.training_info['r2']:.4f}, MAE = {st.session_state.training_info['mae']:.2f} kW")
     
     # ================================
-    # 11.1 LỰA CHỌN SỐ CHU KỲ DỰ BÁO
+    # 12.1 LỰA CHỌN SỐ CHU KỲ DỰ BÁO
     # ================================
     st.subheader("📅 Chọn số chu kỳ dự báo")
     
@@ -338,7 +472,7 @@ else:
     st.markdown("---")
     
     # ================================
-    # 11.2 NHẬP DỮ LIỆU DỰ BÁO
+    # 12.2 NHẬP DỮ LIỆU DỰ BÁO
     # ================================
     st.subheader(f"📝 Nhập dữ liệu dự báo cho {st.session_state.n_periods} chu kỳ")
     st.markdown("**✏️ Hướng dẫn:** Mỗi dòng là 1 giá trị (dễ dàng copy/paste từ Excel)")
@@ -389,7 +523,7 @@ else:
             st.success(f"✅ Đã đọc file")
     
     # ================================
-    # 11.3 HÀM XỬ LÝ DỮ LIỆU NHẬP
+    # 12.3 HÀM XỬ LÝ DỮ LIỆU NHẬP
     # ================================
     def parse_input_data(text, expected_count, data_name):
         if not text or not text.strip():
@@ -419,7 +553,7 @@ else:
         return values, None
     
     # ================================
-    # 11.4 XỬ LÝ VÀ DỰ BÁO
+    # 12.4 XỬ LÝ VÀ DỰ BÁO
     # ================================
     if wind_text and temp_text:
         wind_values, wind_error = parse_input_data(wind_text, st.session_state.n_periods, "Tốc độ gió")
@@ -511,91 +645,4 @@ else:
                 axes[2].set_xlabel("Chu kỳ")
                 axes[2].set_ylabel("Nhiệt độ (°C)")
                 axes[2].grid(True, alpha=0.3)
-                axes[2].fill_between(range(1, st.session_state.n_periods+1), temp_values, alpha=0.2, color='r')
-                
-                plt.tight_layout()
-                st.pyplot(fig)
-                
-                # Bảng kết quả
-                st.subheader("📋 Bảng kết quả chi tiết")
-                
-                result_data = []
-                for i in range(st.session_state.n_periods):
-                    result_data.append({
-                        'Period': i + 1,
-                        'WindSpeed': f"{wind_values[i]:.2f}",
-                        'Temperature': f"{temp_values[i]:.2f}",
-                        'Power': f"{forecast_power[i]:.2f}"
-                    })
-                result_df = pd.DataFrame(result_data)
-                
-                st.dataframe(result_df, height=400, use_container_width=True)
-                
-                csv = result_df.to_csv(index=False)
-                
-                if st.session_state.n_periods == 24:
-                    filename = f"forecast_{st.session_state.n_periods}_periods.csv"
-                elif st.session_state.n_periods == 48:
-                    filename = f"forecast_{st.session_state.n_periods}_periods.csv"
-                else:
-                    filename = f"forecast_{st.session_state.n_periods}_periods.csv"
-                
-                st.download_button(
-                    label="📥 Tải xuống file CSV",
-                    data=csv,
-                    file_name=filename,
-                    mime="text/csv",
-                    use_container_width=True
-                )
-                
-                # Thống kê theo giờ cho 96 chu kỳ
-                if st.session_state.n_periods == 96:
-                    st.subheader("📊 Thống kê công suất phát theo giờ")
-                    
-                    hourly_power = []
-                    for i in range(0, 96, 4):
-                        hourly_power.append(np.sum(forecast_power[i:i+4]) * 0.25)
-                    
-                    hours = range(1, 25)
-                    fig_hourly, ax = plt.subplots(figsize=(12, 5))
-                    ax.bar(hours, hourly_power, color='skyblue', alpha=0.7, edgecolor='navy')
-                    ax.set_xlabel("Giờ trong ngày")
-                    ax.set_ylabel("Công suất phát (kWh)")
-                    ax.set_title("Công suất phát theo giờ")
-                    ax.grid(True, alpha=0.3, axis='y')
-                    
-                    for i, (h, val) in enumerate(zip(hours, hourly_power)):
-                        if val > 10:
-                            ax.text(h, val + 5, f'{val:.0f}', ha='center', va='bottom', fontsize=8)
-                    
-                    plt.tight_layout()
-                    st.pyplot(fig_hourly)
-                    
-                    hourly_data = []
-                    cumulative = 0
-                    for i in range(24):
-                        cumulative += hourly_power[i]
-                        hourly_data.append({
-                            'Giờ': f"{i+1:02d}:00",
-                            'Sản lượng (kWh)': f"{hourly_power[i]:.2f}",
-                            'Lũy kế (kWh)': f"{cumulative:.2f}"
-                        })
-                    hourly_df = pd.DataFrame(hourly_data)
-                    st.dataframe(hourly_df, use_container_width=True)
-                    
-                    max_hour = np.argmax(hourly_power) + 1
-                    st.info(f"💡 **Giờ phát điện cao điểm:** {max_hour}:00 với sản lượng {hourly_power[max_hour-1]:.2f} kWh")
-    
-    else:
-        st.info(f"📝 Vui lòng nhập {st.session_state.n_periods} giá trị tốc độ gió và {st.session_state.n_periods} giá trị nhiệt độ (mỗi dòng 1 số)")
-
-# ================================
-# 12. Footer
-# ================================
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: gray;'>"
-    "🌬️ Hệ thống dự báo công suất tuabin gió | XGBoost | Hỗ trợ 24/48/96 chu kỳ"
-    "</div>",
-    unsafe_allow_html=True
-)
+                axes[2].fill_between(range(1, st.session_state.n_periods+1), temp_values, alpha=0.2, color='

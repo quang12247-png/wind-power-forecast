@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore')
 # 2. Cấu hình trang
 # ================================
 st.set_page_config(
-    page_title="Dự báo công suất tuabin gió",
+    page_title="DỰ BÁO CÔNG SUẤT PHÁT - NHÀ MÁY ĐIỆN GIÓ BT1",
     page_icon="🌬️",
     layout="wide"
 )
@@ -24,7 +24,7 @@ st.set_page_config(
 # ================================
 # 3. Tiêu đề
 # ================================
-st.title("🌬️ Dự báo công suất phát điện tuabin gió")
+st.title("🌬️ DỰ BÁO CÔNG SUẤT PHÁT - NHÀ MÁY ĐIỆN GIÓ BT1")
 st.markdown("---")
 
 # ================================

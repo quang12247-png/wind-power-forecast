@@ -436,9 +436,11 @@ else:
     
     # Hiển thị thông tin mô hình
     st.success(f"✅ **Mô hình đã sẵn sàng!**")
-    st.info(f"📅 Huấn luyện ngày: {st.session_state.training_info['date']}\n\n"
-            f"📊 Số mẫu huấn luyện: {st.session_state.training_info['n_valid']:,} mẫu (đã lọc nhiễu)\n\n"
-            f"📈 Chất lượng mô hình: R² = {st.session_state.training_info['r2']:.4f}, MAE = {st.session_state.training_info['mae']:.2f} kW")
+    st.info(f"""📅 Huấn luyện ngày: {st.session_state.training_info['date']}
+
+Số mẫu huấn luyện: {st.session_state.training_info['n_valid']:,} mẫu (đã lọc nhiễu)
+
+📈 Chất lượng mô hình: R² = {st.session_state.training_info['r2']:.4f}, MAE = {st.session_state.training_info['mae']:.2f} kW""")
     
     # ================================
     # 12.1 LỰA CHỌN SỐ CHU KỲ DỰ BÁO
